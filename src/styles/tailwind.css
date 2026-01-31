@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@layer base {
+  :root {
+    --color-brand-green: #00C805;
+    --color-brand-red: #FF5000;
+  }
+}
