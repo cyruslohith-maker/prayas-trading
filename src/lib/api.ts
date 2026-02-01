@@ -1,18 +1,34 @@
 // @ts-nocheck
-export const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyRZccNGpkG1xSBIcMUurW6AD8t8u7i8UpbEPxuUwWzKpGEaUea6qU5veREoJmM_RuDxA/exec";
+export const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwowrmynkHDiQ0bsz4dfKkeRfJeLn9Qr7M7EzgyX_D7Pn1rufm4KEbNn-jTh4zL7sIa2Q/exec";
 
-async function request(payload: any) {
+// Optimized request function with faster timeout
+async function request(payload: any, timeout: number = 5000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
   try {
     const response = await fetch(SCRIPT_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain" }, 
       body: JSON.stringify(payload),
+      signal: controller.signal
     });
+    clearTimeout(timeoutId);
     return await response.json();
   } catch (error) {
+    clearTimeout(timeoutId);
     console.error("API ERROR:", error);
     return { success: false, message: "CONNECTION_LOST" };
   }
+}
+
+// Fire-and-forget request for background processing (for perceived speed)
+function requestAsync(payload: any) {
+  fetch(SCRIPT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" }, 
+    body: JSON.stringify(payload),
+  }).catch(console.error);
 }
 
 // --- AUTHENTICATION ---
@@ -23,10 +39,19 @@ export async function loginUser(userName: string, pin: string) {
   } catch (e) { return { success: false }; }
 }
 
-// --- MARKET DATA ---
-export async function fetchMarketPrices() {
+// --- MARKET DATA (with round-based pricing) ---
+export async function fetchMarketPrices(round?: number) {
   try {
-    const res = await fetch(`${SCRIPT_URL}?action=getMarketPrices&t=${Date.now()}`);
+    const roundParam = round !== undefined ? `&round=${round}` : '';
+    const res = await fetch(`${SCRIPT_URL}?action=getMarketPrices${roundParam}&t=${Date.now()}`);
+    return await res.json();
+  } catch (e) { return []; }
+}
+
+// NEW: Get stock prices for specific round from Back End sheet
+export async function getStockPricesForRound(round: number) {
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=getStockPricesForRound&round=${round}&t=${Date.now()}`);
     return await res.json();
   } catch (e) { return []; }
 }
@@ -48,13 +73,22 @@ export async function getUserBalance(userName: string) {
   } catch (e) { return 0; }
 }
 
+// NEW: Get current cash balance from Result sheet Column L
+export async function getCurrentCashBalance(userName: string) {
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=getCurrentCashBalance&userName=${userName}&t=${Date.now()}`);
+    const data = await res.json();
+    return data.balance || 0;
+  } catch (e) { return 0; }
+}
+
 // --- GLOBAL STATE CONTROL ---
 export async function getActiveRound() {
   try {
     const res = await fetch(`${SCRIPT_URL}?action=getActiveRound&t=${Date.now()}`);
     const data = await res.json();
-    return data.round || 1;
-  } catch (e) { return 1; }
+    return data.round || 0;
+  } catch (e) { return 0; }
 }
 
 export async function setRoundAction(round: number) {
@@ -74,6 +108,19 @@ export async function setOptionLock(state: string) {
   return await request({ action: "setOptionLock", state });
 }
 
+// --- NEWS LOCK STATE (NEW) ---
+export async function getNewsLockState() {
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=getNewsLockState&t=${Date.now()}`);
+    const data = await res.json();
+    return data.state || 'open';
+  } catch (e) { return 'open'; }
+}
+
+export async function setNewsLock(state: string) {
+  return await request({ action: "setNewsLock", state });
+}
+
 // --- GET OPTION PREMIUM ---
 export async function getOptionPremium(round: number, strike: number, type: string) {
   try {
@@ -84,6 +131,18 @@ export async function getOptionPremium(round: number, strike: number, type: stri
 }
 
 // --- STOCK TRADING ---
+
+// ROUND 0: Buy from system (no PIN, no seller)
+export async function buyFromSystem(buyer: string, stock: string, qty: number) {
+  return await request({ 
+    action: "buyFromSystem", 
+    buyer, 
+    stock: stock.toUpperCase(),
+    qty: parseInt(qty)
+  }, 4000);
+}
+
+// ROUND 1+: Seller creates sell order
 export async function createStockSellOrder(seller: string, stock: string, qty: number, price: number) {
   const res = await request({ 
     action: "createStockSellOrder", 
@@ -91,7 +150,7 @@ export async function createStockSellOrder(seller: string, stock: string, qty: n
     stock: stock.toUpperCase(),
     qty: parseInt(qty), 
     price: parseFloat(price)
-  });
+  }, 4000);
   
   if (res.success) {
     return res.pin;
@@ -102,26 +161,30 @@ export async function createStockSellOrder(seller: string, stock: string, qty: n
   }
 }
 
+// ROUND 1+: Buyer matches with seller's PIN (now bypasses P2P queue for stocks)
 export async function matchStockBuyOrder(buyer: string, pin: string, stock: string, qty: number, price: number) {
-  return await request({ 
-    action: "matchStockBuyOrder", 
+  // Immediately return success for UI, let backend process
+  const res = await request({ 
+    action: "matchStockBuyOrderDirect", // New action: direct to broker sheet
     pin: String(pin).trim(), 
     buyer,
     stock: stock.toUpperCase(),
     qty: parseInt(qty),
     price: parseFloat(price)
-  });
+  }, 4000);
+  
+  return res;
 }
 
-// NEW: Get pending option trades from Broker Options sheets
-export async function getPendingOptionTrades() {
+// NEW: Get pending stock trades from Broker sheets (for admin view only)
+export async function getPendingTrades() {
   try {
-    const res = await fetch(`${SCRIPT_URL}?action=getPendingOptionTrades&t=${Date.now()}`);
+    const res = await fetch(`${SCRIPT_URL}?action=getQueue&t=${Date.now()}`);
     return await res.json();
   } catch (e) { return []; }
 }
 
-// --- OPTION TRADING (New Flow) ---
+// --- OPTION TRADING (with broker verification) ---
 export async function createOptionBuyOrder(buyer: string, trade: string, strike: number, lotSize: number, lots: number, premium: number) {
   return await request({
     action: "createOptionBuyOrder",
@@ -159,22 +222,11 @@ export async function matchOptionOrder(user: string, isSeller: boolean, pin: str
   });
 }
 
-// --- BLOCK DEALS ---
-export async function floatTradeAction(ticker: string, qty: number, price: number, isBuy: boolean, changePercent: number) {
-  return await request({
-    action: "floatTrade",
-    ticker: ticker.toUpperCase(),
-    qty: parseInt(qty),
-    price: parseFloat(price),
-    isBuy,
-    changePercent: parseFloat(changePercent)
-  });
-}
-
 // --- BROKER PANEL ---
-export async function getPendingTrades() {
+export async function getPendingOptionTrades(brokerName?: string) {
   try {
-    const res = await fetch(`${SCRIPT_URL}?action=getQueue&t=${Date.now()}`);
+    const brokerParam = brokerName ? `&broker=${encodeURIComponent(brokerName)}` : '';
+    const res = await fetch(`${SCRIPT_URL}?action=getPendingOptionTrades${brokerParam}&t=${Date.now()}`);
     return await res.json();
   } catch (e) { return []; }
 }
@@ -242,4 +294,31 @@ export async function createAuction(round: number, stock: string, snippet: strin
 
 export async function placeBid(auctionId: string, bidder: string, amount: number) {
   return await request({ action: "placeBid", auctionId, bidder, amount });
+}
+
+// --- BLOCK DEALS ---
+export async function floatTradeAction(ticker: string, qty: number, price: number, isBuy: boolean, changePercent: number) {
+  return await request({
+    action: "floatTrade",
+    ticker: ticker.toUpperCase(),
+    qty: parseInt(qty),
+    price: parseFloat(price),
+    isBuy,
+    changePercent: parseFloat(changePercent)
+  });
+}
+
+// --- TEAM CONFIGURATION ---
+export async function getTeamBrokerMapping() {
+  try {
+    const res = await fetch(`${SCRIPT_URL}?action=getTeamBrokerMapping&t=${Date.now()}`);
+    return await res.json();
+  } catch (e) { 
+    // Default mapping if API fails
+    return {
+      broker_01: ['team_alpha', 'team_beta', 'team_charlie', 'team_defcon'],
+      broker_02: ['team_tango', 'team_foxtrot', 'team_delta', 'team_golf'],
+      broker_03: ['team_hotel', 'team_romeo', 'team_gamma', 'team_delta']
+    };
+  }
 }

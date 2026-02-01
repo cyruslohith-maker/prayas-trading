@@ -1,16 +1,19 @@
 // @ts-nocheck
 import { BarChart3, ArrowLeftRight, TrendingUp, Newspaper, Lightbulb } from 'lucide-react';
 
-export function Navigation({ activeItem, onNavigate, userRole, isCollapsed, hasCompletedAuction, optionLockState }) {
+export function Navigation({ activeItem, onNavigate, userRole, isCollapsed, hasCompletedAuction, optionLockState, newsLockState }) {
   
   // Only show Option Chain if unlocked OR user is broker/admin
   const showOptionChain = optionLockState === 'open' || userRole === 'broker' || userRole === 'admin';
+  
+  // Only show News if unlocked OR user is broker/admin
+  const showNews = newsLockState === 'open' || userRole === 'broker' || userRole === 'admin';
   
   const items = [
     { id: 'market', label: 'Market', icon: BarChart3 },
     { id: 'trade', label: 'Trade', icon: ArrowLeftRight },
     ...(showOptionChain ? [{ id: 'options', label: 'Option Chain', icon: TrendingUp }] : []),
-    { id: 'news', label: 'News', icon: Newspaper },
+    ...(showNews ? [{ id: 'news', label: 'News', icon: Newspaper }] : []),
     { id: 'intel', label: 'Intel', icon: Lightbulb, showDot: hasCompletedAuction }
   ];
 

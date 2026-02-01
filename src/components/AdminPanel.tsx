@@ -1,12 +1,13 @@
 // @ts-nocheck
 import { useState, useEffect } from 'react';
-import { setRoundAction, getActiveRound, injectNews, getOptionLockState, setOptionLock } from '../lib/api';
-import { ArrowLeft, ChevronLeft, ChevronRight, Send, Activity, Lock, Unlock } from 'lucide-react';
+import { setRoundAction, getActiveRound, injectNews, getOptionLockState, setOptionLock, getNewsLockState, setNewsLock } from '../lib/api';
+import { ArrowLeft, ChevronLeft, ChevronRight, Send, Activity, Lock, Unlock, Newspaper } from 'lucide-react';
 
 export function AdminPanel({ onBack }) {
-  const [currentRound, setCurrentRound] = useState(1);
+  const [currentRound, setCurrentRound] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [optionLockState, setOptionLockState] = useState('open');
+  const [optionLockState, setOptionLockStateLocal] = useState('open');
+  const [newsLockState, setNewsLockStateLocal] = useState('open');
   
   // News injection state
   const [newsTitle, setNewsTitle] = useState('');
@@ -17,16 +18,22 @@ export function AdminPanel({ onBack }) {
   useEffect(() => {
     loadRound();
     loadOptionLockState();
+    loadNewsLockState();
   }, []);
 
   const loadRound = async () => {
     const round = await getActiveRound();
-    setCurrentRound(round || 1);
+    setCurrentRound(round || 0);
   };
 
   const loadOptionLockState = async () => {
     const state = await getOptionLockState();
-    setOptionLockState(state || 'open');
+    setOptionLockStateLocal(state || 'open');
+  };
+
+  const loadNewsLockState = async () => {
+    const state = await getNewsLockState();
+    setNewsLockStateLocal(state || 'open');
   };
 
   const handleOptionLockToggle = async () => {
@@ -40,7 +47,7 @@ export function AdminPanel({ onBack }) {
     try {
       const res = await setOptionLock(newState);
       if (res.success) {
-        setOptionLockState(newState);
+        setOptionLockStateLocal(newState);
         alert(`Option trading ${newState === 'closed' ? 'LOCKED ✗' : 'UNLOCKED ✓'} for traders`);
       } else {
         alert("Failed to update option lock");
@@ -52,17 +59,42 @@ export function AdminPanel({ onBack }) {
     }
   };
 
-  const handleUpdateRound = async (newRound) => {
-    if (newRound < 1 || newRound > 5 || loading) return;
+  const handleNewsLockToggle = async () => {
+    const newState = newsLockState === 'open' ? 'closed' : 'open';
     
-    if (!confirm(`Switch to Round ${newRound}? This will affect all users.`)) return;
+    if (!confirm(`${newState === 'closed' ? 'LOCK' : 'UNLOCK'} news feed for traders?\n\nThis will ${newState === 'closed' ? 'hide' : 'show'} the News page for all traders.`)) {
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const res = await setNewsLock(newState);
+      if (res.success) {
+        setNewsLockStateLocal(newState);
+        alert(`News feed ${newState === 'closed' ? 'LOCKED ✗' : 'UNLOCKED ✓'} for traders`);
+      } else {
+        alert("Failed to update news lock");
+      }
+    } catch (e) {
+      alert("Error updating news lock");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateRound = async (newRound) => {
+    if (newRound < 0 || newRound > 4 || loading) return;
+    
+    const roundName = newRound === 0 ? 'Round 0 (Initial Portfolio)' : `Round ${newRound}`;
+    
+    if (!confirm(`Switch to ${roundName}?\n\nThis will:\n• Update prices for all traders\n• ${newRound === 0 ? 'Enable initial portfolio buying' : 'Enable P2P trading'}\n• Update the Backend sheet B1 cell\n\nThis affects all users.`)) return;
     
     setLoading(true);
     try {
       const res = await setRoundAction(newRound);
       if (res.success) {
         setCurrentRound(newRound);
-        alert(`Successfully switched to Round ${newRound}`);
+        alert(`Successfully switched to ${roundName}`);
       } else {
         alert("Failed to update round");
       }
@@ -84,7 +116,7 @@ export function AdminPanel({ onBack }) {
       const res = await injectNews(
         newsTitle,
         newsContent,
-        newsContent, // summary = content for now
+        newsContent,
         newsSource || 'SYSTEM'
       );
       
@@ -105,7 +137,7 @@ export function AdminPanel({ onBack }) {
 
   return (
     <div className="min-h-screen bg-black p-8">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         {/* Header */}
         <button 
           onClick={onBack} 
@@ -131,10 +163,14 @@ export function AdminPanel({ onBack }) {
             {/* Current Round Display */}
             <div className="bg-black border border-zinc-700 rounded-xl p-8 mb-6 text-center">
               <p className="text-gray-400 text-sm mb-3 uppercase tracking-wide">Current Round</p>
-              <div className="text-green-500 text-7xl font-bold mb-4">{currentRound}</div>
+              <div className={`text-7xl font-bold mb-4 ${currentRound === 0 ? 'text-yellow-500' : 'text-green-500'}`}>
+                {currentRound}
+              </div>
               <div className="flex items-center justify-center gap-2">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-green-500 text-sm font-semibold">ACTIVE</span>
+                <div className={`w-2 h-2 rounded-full animate-pulse ${currentRound === 0 ? 'bg-yellow-500' : 'bg-green-500'}`}></div>
+                <span className={`text-sm font-semibold ${currentRound === 0 ? 'text-yellow-500' : 'text-green-500'}`}>
+                  {currentRound === 0 ? 'INITIAL PORTFOLIO' : 'ACTIVE'}
+                </span>
               </div>
             </div>
 
@@ -142,9 +178,9 @@ export function AdminPanel({ onBack }) {
             <div className="flex items-center gap-3 mb-4">
               <button
                 onClick={() => handleUpdateRound(currentRound - 1)}
-                disabled={currentRound <= 1 || loading}
+                disabled={currentRound <= 0 || loading}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-semibold transition-all ${
-                  currentRound <= 1 || loading
+                  currentRound <= 0 || loading
                     ? 'bg-zinc-800 text-gray-600 cursor-not-allowed'
                     : 'bg-zinc-800 text-white hover:bg-zinc-700'
                 }`}
@@ -155,9 +191,9 @@ export function AdminPanel({ onBack }) {
               
               <button
                 onClick={() => handleUpdateRound(currentRound + 1)}
-                disabled={currentRound >= 5 || loading}
+                disabled={currentRound >= 4 || loading}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-semibold transition-all ${
-                  currentRound >= 5 || loading
+                  currentRound >= 4 || loading
                     ? 'bg-zinc-800 text-gray-600 cursor-not-allowed'
                     : 'bg-zinc-800 text-white hover:bg-zinc-700'
                 }`}
@@ -167,16 +203,16 @@ export function AdminPanel({ onBack }) {
               </button>
             </div>
 
-            {/* Quick Round Selector */}
+            {/* Quick Round Selector - Now includes Round 0 */}
             <div className="grid grid-cols-5 gap-2">
-              {[1, 2, 3, 4, 5].map(round => (
+              {[0, 1, 2, 3, 4].map(round => (
                 <button
                   key={round}
                   onClick={() => handleUpdateRound(round)}
                   disabled={loading}
                   className={`py-2 rounded-lg text-sm font-bold transition-all ${
                     currentRound === round
-                      ? 'bg-green-600 text-white'
+                      ? round === 0 ? 'bg-yellow-600 text-black' : 'bg-green-600 text-white'
                       : 'bg-zinc-800 text-gray-400 hover:bg-zinc-700 hover:text-white'
                   }`}
                 >
@@ -185,66 +221,118 @@ export function AdminPanel({ onBack }) {
               ))}
             </div>
 
+            {/* Round 0 Explanation */}
+            {currentRound === 0 && (
+              <div className="mt-4 bg-yellow-600/10 border border-yellow-600 rounded-lg p-4">
+                <p className="text-yellow-500 text-sm font-semibold mb-1">Round 0: Initial Portfolio</p>
+                <p className="text-gray-300 text-xs">
+                  Traders buy from system at current prices. No PIN required, no P2P trading.
+                </p>
+              </div>
+            )}
+
             {loading && (
               <p className="text-center text-gray-500 text-sm mt-4">Updating round...</p>
             )}
           </div>
 
-          {/* Option Lock Control */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8">
-            <h2 className="text-xl font-bold text-white mb-6">Option Trading Control</h2>
-            
-            <div className="bg-black border border-zinc-700 rounded-xl p-6 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-gray-400 text-sm mb-1">Status for Traders:</p>
-                  <div className="flex items-center gap-2">
-                    {optionLockState === 'open' ? (
-                      <>
-                        <Unlock className="text-green-500" size={20} />
-                        <span className="text-green-500 font-bold text-lg">UNLOCKED</span>
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="text-red-500" size={20} />
-                        <span className="text-red-500 font-bold text-lg">LOCKED</span>
-                      </>
-                    )}
+          {/* Lock Controls */}
+          <div className="space-y-8">
+            {/* Option Lock Control */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8">
+              <h2 className="text-xl font-bold text-white mb-6">Option Trading Control</h2>
+              
+              <div className="bg-black border border-zinc-700 rounded-xl p-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">Status for Traders:</p>
+                    <div className="flex items-center gap-2">
+                      {optionLockState === 'open' ? (
+                        <>
+                          <Unlock size={20} className="text-green-500" />
+                          <span className="text-green-500 font-bold">UNLOCKED</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock size={20} className="text-red-500" />
+                          <span className="text-red-500 font-bold">LOCKED</span>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <button 
+                
+                <button
                   onClick={handleOptionLockToggle}
                   disabled={loading}
-                  className={`px-6 py-3 rounded-lg font-bold transition-all ${
+                  className={`w-full py-3 rounded-lg font-semibold transition-all ${
                     optionLockState === 'open'
-                      ? 'bg-red-600 hover:bg-red-700 text-white'
-                      : 'bg-green-600 hover:bg-green-700 text-white'
-                  } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      ? 'bg-red-600 hover:bg-red-500 text-white'
+                      : 'bg-green-600 hover:bg-green-500 text-white'
+                  }`}
                 >
-                  {optionLockState === 'open' ? 'LOCK OPTIONS' : 'UNLOCK OPTIONS'}
+                  {optionLockState === 'open' ? 'Lock Options' : 'Unlock Options'}
                 </button>
               </div>
+              
+              <p className="text-gray-500 text-sm">
+                {optionLockState === 'open' 
+                  ? 'Option Chain and options trading are visible to all traders.'
+                  : 'Option Chain and options trading are hidden from traders.'}
+              </p>
             </div>
 
-            <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
-              <p className="text-sm text-gray-300 leading-relaxed">
-                <span className="font-semibold text-blue-400">ℹ️ About Option Lock:</span><br/>
-                When <strong>LOCKED</strong>, traders cannot:
-                <ul className="list-disc list-inside mt-2 space-y-1 ml-4">
-                  <li>See the Option Chain button in sidebar</li>
-                  <li>Access the Options tab in Trade page</li>
-                  <li>Trade any options</li>
-                </ul>
-                <br/>
-                <strong className="text-green-400">Brokers and Admins are NOT affected</strong> and can always trade options.
+            {/* News Lock Control - NEW */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8">
+              <h2 className="text-xl font-bold text-white mb-6">News Feed Control</h2>
+              
+              <div className="bg-black border border-zinc-700 rounded-xl p-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">Status for Traders:</p>
+                    <div className="flex items-center gap-2">
+                      {newsLockState === 'open' ? (
+                        <>
+                          <Newspaper size={20} className="text-green-500" />
+                          <span className="text-green-500 font-bold">VISIBLE</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock size={20} className="text-red-500" />
+                          <span className="text-red-500 font-bold">HIDDEN</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                <button
+                  onClick={handleNewsLockToggle}
+                  disabled={loading}
+                  className={`w-full py-3 rounded-lg font-semibold transition-all ${
+                    newsLockState === 'open'
+                      ? 'bg-red-600 hover:bg-red-500 text-white'
+                      : 'bg-green-600 hover:bg-green-500 text-white'
+                  }`}
+                >
+                  {newsLockState === 'open' ? 'Hide News' : 'Show News'}
+                </button>
+              </div>
+              
+              <p className="text-gray-500 text-sm">
+                {newsLockState === 'open' 
+                  ? 'News page is visible to all traders.'
+                  : 'News page is hidden from traders. Only brokers and admin can see it.'}
               </p>
             </div>
           </div>
+        </div>
 
-          {/* News Injection */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8">
-            <h2 className="text-xl font-bold text-white mb-6">Inject News</h2>
+        {/* News Injection */}
+        <div className="mt-8 bg-zinc-900 border border-zinc-800 rounded-xl p-8">
+          <h2 className="text-xl font-bold text-white mb-6">Inject News</h2>
 
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-4">
               {/* Title */}
               <div>
@@ -269,7 +357,9 @@ export function AdminPanel({ onBack }) {
                   className="w-full bg-black border border-zinc-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
               </div>
+            </div>
 
+            <div className="space-y-4">
               {/* Content */}
               <div>
                 <label className="block text-gray-400 text-sm mb-2">Content</label>
@@ -277,7 +367,7 @@ export function AdminPanel({ onBack }) {
                   value={newsContent}
                   onChange={e => setNewsContent(e.target.value)}
                   placeholder="Enter the full news article content..."
-                  rows={6}
+                  rows={5}
                   className="w-full bg-black border border-zinc-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
                 />
               </div>
@@ -303,7 +393,7 @@ export function AdminPanel({ onBack }) {
         <div className="mt-8 bg-yellow-600/10 border border-yellow-600 rounded-xl p-6">
           <h3 className="text-yellow-500 font-bold mb-2">⚠️ Admin Actions Affect All Users</h3>
           <p className="text-gray-300 text-sm">
-            Round changes and news injections are immediately visible to all participants. 
+            Round changes, lock controls, and news injections are immediately visible to all participants. 
             Use these controls responsibly and coordinate with brokers before making system-wide changes.
           </p>
         </div>

@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { 
   createStockSellOrder, 
   matchStockBuyOrder,
+  buyFromSystem,
   createOptionBuyOrder,
   createOptionSellOrder,
   matchOptionOrder,
@@ -11,14 +12,38 @@ import {
   getOptionPremium
 } from '../lib/api';
 
+// Session storage for form state persistence
+const FORM_STATE_KEY = 'mockstock_tradeFormState';
+
 export function TradePage({ onBack, userName, activeRound, marketStocks, optionLockState, userRole }) {
   const [assetType, setAssetType] = useState<'stocks' | 'options'>('stocks');
-  const [isBuy, setIsBuy] = useState(false);
+  const [isBuy, setIsBuy] = useState(activeRound === 0 ? true : false); // Default to buy for Round 0
   
-  // Stock fields
-  const [ticker, setTicker] = useState('');
-  const [qty, setQty] = useState('');
-  const [price, setPrice] = useState('');
+  // Stock fields - with persistence
+  const [ticker, setTicker] = useState(() => {
+    const saved = sessionStorage.getItem(FORM_STATE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.ticker || '';
+    }
+    return '';
+  });
+  const [qty, setQty] = useState(() => {
+    const saved = sessionStorage.getItem(FORM_STATE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.qty || '';
+    }
+    return '';
+  });
+  const [price, setPrice] = useState(() => {
+    const saved = sessionStorage.getItem(FORM_STATE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.price || '';
+    }
+    return '';
+  });
   const [pin, setPin] = useState('');
   const [genPin, setGenPin] = useState<number | null>(null);
   
@@ -37,6 +62,23 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
   
   // Check if options should be visible
   const showOptionsTab = optionLockState === 'open' || userRole === 'broker' || userRole === 'admin';
+  
+  // Round 0 specific: Only allow buying from system
+  const isRoundZero = activeRound === 0;
+  
+  // Persist form state
+  useEffect(() => {
+    const formState = { ticker, qty, price };
+    sessionStorage.setItem(FORM_STATE_KEY, JSON.stringify(formState));
+  }, [ticker, qty, price]);
+
+  // Force buy mode and stocks for Round 0
+  useEffect(() => {
+    if (isRoundZero) {
+      setIsBuy(true);
+      setAssetType('stocks');
+    }
+  }, [isRoundZero]);
   
   // Load strikes for current round
   useEffect(() => {
@@ -61,6 +103,12 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
       fetchPrem();
     }
   }, [strike, lots, lotSize, optionType, activeRound, assetType, isBuy]);
+
+  // Get current price for selected stock (for Round 0)
+  const getCurrentPrice = () => {
+    const stock = marketStocks.find(s => s.ticker === ticker);
+    return stock ? stock.price : 0;
+  };
   
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -69,11 +117,34 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
     try {
       if (assetType === 'stocks') {
         // STOCK TRADING
-        if (isBuy) {
-          // Buy stocks (match with seller's PIN)
-          const res = await matchStockBuyOrder(userName, pin, ticker, parseFloat(qty), parseFloat(price));
+        
+        if (isRoundZero) {
+          // ROUND 0: Buy from system (no PIN, no seller)
+          const currentPrice = getCurrentPrice();
+          if (!ticker || !qty) {
+            alert("Please select a stock and enter quantity");
+            setLoading(false);
+            return;
+          }
+          
+          const res = await buyFromSystem(userName, ticker, parseInt(qty));
           if (res.success) {
-            alert("✅ Trade matched successfully! Pending broker verification.");
+            const totalValue = currentPrice * parseInt(qty);
+            alert(`✅ PURCHASE SUCCESSFUL!\n\nYou bought ${qty} shares of ${ticker}\nat ₹${currentPrice.toLocaleString('en-IN')} per share\n\nTotal: ₹${totalValue.toLocaleString('en-IN')}`);
+            setTicker('');
+            setQty('');
+          } else if (res.error === 'INSUFFICIENT_CAPITAL') {
+            alert(`❌ INSUFFICIENT CAPITAL\n\n${res.message}`);
+          } else {
+            alert(res.message || "Failed to complete purchase");
+          }
+        } else if (isBuy) {
+          // ROUND 1+: Buy stocks (match with seller's PIN) - Direct to broker sheet
+          const res = await matchStockBuyOrder(userName, pin, ticker, parseFloat(qty), parseFloat(price));
+          
+          if (res.success) {
+            // Show immediate success for perceived speed
+            alert("✅ Trade matched successfully! Stocks allocated.");
             setPin('');
             setQty('');
             setPrice('');
@@ -86,7 +157,7 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
             alert(res.message || "Invalid PIN or trade details don't match");
           }
         } else {
-          // Sell stocks (generate PIN)
+          // ROUND 1+: Sell stocks (generate PIN)
           try {
             const generatedPin = await createStockSellOrder(userName, ticker, parseFloat(qty), parseFloat(price));
             setGenPin(generatedPin);
@@ -99,7 +170,7 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
           }
         }
       } else {
-        // OPTION TRADING
+        // OPTION TRADING (unchanged - requires broker verification)
         if (isBuy) {
           // SELLER: Match option (enter buyer's PIN)
           const res = await matchOptionOrder(
@@ -162,14 +233,26 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
         </button>
         <h1 className="text-2xl font-bold">Trade</h1>
       </div>
+
+      {/* Round 0 Banner */}
+      {isRoundZero && (
+        <div className="bg-yellow-600/10 border border-yellow-600 rounded-lg p-4 mb-6">
+          <h3 className="text-yellow-500 font-bold mb-1">🏁 Round 0: Initial Portfolio</h3>
+          <p className="text-gray-300 text-sm">
+            Buy stocks from the system at current market prices. No PIN required, no P2P trading.
+          </p>
+        </div>
+      )}
       
-      {/* Asset Type Tabs */}
+      {/* Asset Type Tabs - Disabled options for Round 0 */}
       <div className="flex gap-2 mb-6">
         <button 
           onClick={() => {
-            setAssetType('stocks');
-            setGenPin(null);
-            setGenOptionPin(null);
+            if (!isRoundZero) {
+              setAssetType('stocks');
+              setGenPin(null);
+              setGenOptionPin(null);
+            }
           }}
           className={`px-6 py-3 rounded-lg font-medium transition-colors ${
             assetType === 'stocks' 
@@ -179,7 +262,7 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
         >
           Stocks
         </button>
-        {showOptionsTab && (
+        {showOptionsTab && !isRoundZero && (
           <button 
             onClick={() => {
               setAssetType('options');
@@ -197,42 +280,55 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
         )}
       </div>
       
-      {/* Buy/Sell Toggle */}
-      <div className="flex gap-2 mb-6">
-        <button 
-          onClick={() => {
-            setIsBuy(false);
-            setGenPin(null);
-            setGenOptionPin(null);
-          }}
-          className={`flex-1 px-6 py-3 rounded-lg font-medium transition-colors ${
-            !isBuy 
-              ? (assetType === 'stocks' ? 'bg-red-600' : 'bg-green-600') + ' text-white' 
-              : 'bg-zinc-900 text-gray-400 hover:bg-zinc-800'
-          }`}
-        >
-          {assetType === 'stocks' ? 'Sell (Generate PIN)' : 'Buy (Generate PIN)'}
-        </button>
-        <button 
-          onClick={() => {
-            setIsBuy(true);
-            setGenPin(null);
-            setGenOptionPin(null);
-          }}
-          className={`flex-1 px-6 py-3 rounded-lg font-medium transition-colors ${
-            isBuy 
-              ? (assetType === 'stocks' ? 'bg-green-600' : 'bg-red-600') + ' text-white' 
-              : 'bg-zinc-900 text-gray-400 hover:bg-zinc-800'
-          }`}
-        >
-          {assetType === 'stocks' ? 'Buy (Enter PIN)' : 'Sell (Enter PIN)'}
-        </button>
-      </div>
+      {/* Buy/Sell Toggle - For Round 0, only Buy is available */}
+      {!isRoundZero && (
+        <div className="flex gap-2 mb-6">
+          <button 
+            onClick={() => {
+              setIsBuy(false);
+              setGenPin(null);
+              setGenOptionPin(null);
+            }}
+            className={`flex-1 px-6 py-3 rounded-lg font-medium transition-colors ${
+              !isBuy 
+                ? (assetType === 'stocks' ? 'bg-red-600' : 'bg-green-600') + ' text-white' 
+                : 'bg-zinc-900 text-gray-400 hover:bg-zinc-800'
+            }`}
+          >
+            {assetType === 'stocks' ? 'Sell (Generate PIN)' : 'Buy (Generate PIN)'}
+          </button>
+          <button 
+            onClick={() => {
+              setIsBuy(true);
+              setGenPin(null);
+              setGenOptionPin(null);
+            }}
+            className={`flex-1 px-6 py-3 rounded-lg font-medium transition-colors ${
+              isBuy 
+                ? (assetType === 'stocks' ? 'bg-green-600' : 'bg-red-600') + ' text-white' 
+                : 'bg-zinc-900 text-gray-400 hover:bg-zinc-800'
+            }`}
+          >
+            {assetType === 'stocks' ? 'Buy (Enter PIN)' : 'Sell (Enter PIN)'}
+          </button>
+        </div>
+      )}
+
+      {/* Round 0 Buy Only Indicator */}
+      {isRoundZero && (
+        <div className="flex gap-2 mb-6">
+          <div className="flex-1 px-6 py-3 rounded-lg font-medium bg-green-600 text-white text-center">
+            Buy from System
+          </div>
+        </div>
+      )}
       
       {/* Info Box */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 mb-6">
         <p className="text-sm text-gray-400">
-          {assetType === 'stocks' ? (
+          {isRoundZero ? (
+            '💡 Select a stock and quantity to buy from the system at current market price.'
+          ) : assetType === 'stocks' ? (
             isBuy 
               ? '💡 Enter the seller\'s PIN to complete the purchase.'
               : '💡 Enter details and generate a PIN. Share it with the buyer.'
@@ -261,7 +357,9 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
                 {marketStocks
                   .filter(s => !['INDEX', 'GOLD', 'COPPER'].includes(s.ticker))
                   .map(s => (
-                    <option key={s.ticker} value={s.ticker}>{s.ticker}</option>
+                    <option key={s.ticker} value={s.ticker}>
+                      {s.ticker} {isRoundZero ? `- ₹${s.price.toLocaleString('en-IN')}` : ''}
+                    </option>
                   ))
                 }
               </select>
@@ -280,21 +378,45 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
               />
             </div>
             
-            <div>
-              <label className="block text-sm font-medium mb-2">Price per Share (₹)</label>
-              <input 
-                value={price} 
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="Enter price"
-                type="number"
-                step="0.01"
-                min="0.01"
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-white"
-                required
-              />
-            </div>
+            {/* Price field - NOT shown for Round 0 */}
+            {!isRoundZero && (
+              <div>
+                <label className="block text-sm font-medium mb-2">Price per Share (₹)</label>
+                <input 
+                  value={price} 
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="Enter price"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-white"
+                  required
+                />
+              </div>
+            )}
+
+            {/* Show calculated total for Round 0 */}
+            {isRoundZero && ticker && qty && (
+              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
+                <div className="flex justify-between mb-2">
+                  <span className="text-gray-400">Price per share:</span>
+                  <span className="text-white">₹{getCurrentPrice().toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between mb-2">
+                  <span className="text-gray-400">Quantity:</span>
+                  <span className="text-white">{qty}</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-zinc-700">
+                  <span className="text-gray-400 font-semibold">Total:</span>
+                  <span className="text-green-500 font-bold">
+                    ₹{(getCurrentPrice() * parseInt(qty || '0')).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+            )}
             
-            {isBuy && (
+            {/* PIN field - NOT shown for Round 0 */}
+            {!isRoundZero && isBuy && (
               <div>
                 <label className="block text-sm font-medium mb-2">Seller's PIN</label>
                 <input 
@@ -302,56 +424,60 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
                   onChange={(e) => setPin(e.target.value)}
                   placeholder="Enter 4-digit PIN from seller"
                   type="text"
-                  maxLength="4"
+                  maxLength={4}
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-white text-center text-2xl tracking-widest"
                   required
                 />
               </div>
             )}
             
-            {!isBuy && qty && price && (
-              <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-4">
-                <div className="text-sm text-gray-400 mb-1">Estimated Value:</div>
-                <div className="text-2xl font-bold text-blue-400">
-                  ₹{(parseFloat(qty || 0) * parseFloat(price || 0)).toLocaleString('en-IN')}
+            {/* Show calculated total for Round 1+ */}
+            {!isRoundZero && !isBuy && qty && price && (
+              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Total Value:</span>
+                  <span className="text-white font-bold">
+                    ₹{(parseFloat(qty) * parseFloat(price)).toLocaleString('en-IN')}
+                  </span>
                 </div>
               </div>
             )}
             
-            {genPin && !isBuy && (
-              <div className="bg-green-600 border-2 border-green-400 rounded-lg p-6 text-center animate-pulse">
-                <div className="text-sm font-medium mb-2">YOUR PIN</div>
-                <div className="text-4xl font-bold tracking-widest">{genPin}</div>
-                <div className="text-sm mt-2 opacity-90">Share this with the buyer</div>
+            {/* Generated PIN display */}
+            {genPin && !isRoundZero && (
+              <div className="bg-green-600/10 border border-green-600 rounded-lg p-4 text-center">
+                <p className="text-gray-400 text-sm mb-2">Your PIN (share with buyer):</p>
+                <p className="text-green-500 text-4xl font-bold tracking-widest">{genPin}</p>
               </div>
             )}
           </div>
         ) : (
-          // OPTION FORM
+          // OPTION FORM (unchanged)
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium mb-2">Option Type</label>
-              <select 
-                value={optionType} 
-                onChange={(e) => setOptionType(e.target.value)}
+              <select
+                value={optionType}
+                onChange={(e) => setOptionType(e.target.value as 'Call-B' | 'Put-B')}
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-white"
+                required
               >
-                <option value="Call-B">Call</option>
-                <option value="Put-B">Put</option>
+                <option value="Call-B">Call Option (Bullish)</option>
+                <option value="Put-B">Put Option (Bearish)</option>
               </select>
             </div>
             
             <div>
               <label className="block text-sm font-medium mb-2">Strike Price</label>
-              <select 
-                value={strike} 
-                onChange={(e) => setStrike(e.target.value)} 
+              <select
+                value={strike}
+                onChange={(e) => setStrike(e.target.value)}
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-white"
                 required
               >
                 <option value="">Select Strike</option>
                 {strikes.map(s => (
-                  <option key={s} value={s}>{Number(s).toFixed(2)}</option>
+                  <option key={s} value={s}>₹{s.toLocaleString('en-IN')}</option>
                 ))}
               </select>
             </div>
@@ -361,7 +487,7 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
               <input 
                 value={lotSize} 
                 onChange={(e) => setLotSize(e.target.value)}
-                placeholder="Enter lot size (e.g., 50)"
+                placeholder="Enter lot size"
                 type="number"
                 min="1"
                 className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-white"
@@ -382,65 +508,65 @@ export function TradePage({ onBack, userName, activeRound, marketStocks, optionL
               />
             </div>
             
-            {!isBuy && totalPremium > 0 && (
-              <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Premium per lot:</span>
-                  <span className="font-medium">₹{premium.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Lot size:</span>
-                  <span className="font-medium">{lotSize}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Number of lots:</span>
-                  <span className="font-medium">{lots}</span>
-                </div>
-                <div className="border-t border-blue-700 pt-2 mt-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-400">Total Premium to Pay:</span>
-                    <span className="text-2xl font-bold text-blue-400">
-                      ₹{totalPremium.toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-            
             {isBuy && (
               <div>
                 <label className="block text-sm font-medium mb-2">Buyer's PIN</label>
                 <input 
                   value={optionPin} 
                   onChange={(e) => setOptionPin(e.target.value)}
-                  placeholder="Enter 4-digit PIN from buyer"
+                  placeholder="Enter PIN from buyer"
                   type="text"
-                  maxLength="4"
+                  maxLength={4}
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-white text-center text-2xl tracking-widest"
                   required
                 />
               </div>
             )}
             
-            {genOptionPin && !isBuy && (
-              <div className="bg-green-600 border-2 border-green-400 rounded-lg p-6 text-center animate-pulse">
-                <div className="text-sm font-medium mb-2">YOUR PIN</div>
-                <div className="text-4xl font-bold tracking-widest">{genOptionPin}</div>
-                <div className="text-sm mt-2 opacity-90">Share this with the seller</div>
+            {!isBuy && premium > 0 && (
+              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
+                <div className="flex justify-between mb-2">
+                  <span className="text-gray-400">Premium per unit:</span>
+                  <span className="text-white">₹{premium.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Total Premium:</span>
+                  <span className="text-yellow-500 font-bold">
+                    ₹{totalPremium.toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+            )}
+            
+            {genOptionPin && (
+              <div className="bg-green-600/10 border border-green-600 rounded-lg p-4 text-center">
+                <p className="text-gray-400 text-sm mb-2">Your PIN (share with seller):</p>
+                <p className="text-green-500 text-4xl font-bold tracking-widest">{genOptionPin}</p>
               </div>
             )}
           </div>
         )}
         
-        <button 
-          type="submit" 
-          disabled={loading} 
-          className="w-full bg-green-600 hover:bg-green-700 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold py-4 rounded-lg transition-colors"
+        {/* Submit Button */}
+        <button
+          type="submit"
+          disabled={loading}
+          className={`w-full py-4 rounded-lg font-semibold text-lg transition-all ${
+            loading
+              ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+              : isRoundZero
+                ? 'bg-green-600 hover:bg-green-500 text-white'
+                : isBuy
+                  ? (assetType === 'stocks' ? 'bg-green-600 hover:bg-green-500' : 'bg-red-600 hover:bg-red-500') + ' text-white'
+                  : (assetType === 'stocks' ? 'bg-red-600 hover:bg-red-500' : 'bg-green-600 hover:bg-green-500') + ' text-white'
+          }`}
         >
           {loading ? 'Processing...' : (
-            assetType === 'stocks'
-              ? (isBuy ? 'Match Buy Order' : 'Create Sell Order')
-              : (isBuy ? 'Match Sell Order' : 'Create Buy Order & Pay Premium')
+            isRoundZero 
+              ? 'Buy from System'
+              : assetType === 'stocks'
+                ? (isBuy ? 'Buy Stock' : 'Generate Sell PIN')
+                : (isBuy ? 'Sell Option' : 'Generate Buy PIN')
           )}
         </button>
       </form>
