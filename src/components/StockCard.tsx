@@ -44,7 +44,7 @@ export function StockCard({ ticker, price, change, previousPrice }) {
     'ITC': 'ITC Ltd',
     'GOLD': 'Gold',
     'COPPER': 'Copper',
-    'NOCUS INDEX': 'Market Index'
+    'NOVUS INDEX': 'Market Index'
   };
   
   const subtitle = subtitles[ticker.toUpperCase()] || ticker;
