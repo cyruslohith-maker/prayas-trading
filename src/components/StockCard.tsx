@@ -47,7 +47,8 @@ export function StockCard({ ticker, price, change, previousPrice }) {
     'NOVUS INDEX': 'Market Index'
   };
   
-  const subtitle = subtitles[ticker.toUpperCase()] || ticker;
+const safeTicker = (ticker || '').toString(); // Forces it to be a string
+const subtitle = subtitles[safeTicker.toUpperCase()] || safeTicker;
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 transition-colors">
