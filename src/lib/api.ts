@@ -1,8 +1,11 @@
 // @ts-nocheck
 // UPDATE THIS URL AFTER DEPLOYING THE NEW CODE.GS
-export const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwUlVNGql4VLd3oitWFg5orcbWQiCp1ZmTwiEjd9Yj1P2GSZu6LMK0ympjRtlDHQRMmRw/exec";
+export const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwowrmynkHDiQ0bsz4dfKkeRfJeLn9Qr7M7EzgyX_D7Pn1rufm4KEbNn-jTh4zL7sIa2Q/exec";
 
-// Request helper with proper error handling
+// ============================================================================
+// HELPERS
+// ============================================================================
+
 async function request(payload: any, timeout: number = 10000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -10,47 +13,37 @@ async function request(payload: any, timeout: number = 10000) {
   try {
     const response = await fetch(SCRIPT_URL, {
       method: "POST",
-      headers: { "Content-Type": "text/plain" },
+      // Important for Google Apps Script to accept POST without CORS issues
+      headers: { "Content-Type": "text/plain;charset=utf-8" }, 
       body: JSON.stringify(payload),
       signal: controller.signal
     });
     clearTimeout(timeoutId);
+    
+    // GAS returns opaque responses sometimes, handle text parsing carefully
     const text = await response.text();
     try {
       return JSON.parse(text);
     } catch {
-      console.error("Invalid JSON response:", text);
-      return { success: false, error: "Invalid response from server" };
+      console.warn("Non-JSON response:", text);
+      return { success: false, error: "Server returned invalid response" };
     }
   } catch (error: any) {
     clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
-      return { success: false, error: "Request timeout" };
-    }
-    console.error("API ERROR:", error);
-    return { success: false, error: error.message || "Network error" };
+    if (error.name === 'AbortError') return { success: false, error: "Request timeout" };
+    console.error("API Error:", error);
+    return { success: false, error: "Network error" };
   }
 }
 
-// GET helper
-async function get(params: string, timeout: number = 8000) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  
+async function get(params: string) {
   try {
     const url = `${SCRIPT_URL}?${params}&t=${Date.now()}`;
-    const response = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    const text = await response.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      console.error("Invalid JSON:", text);
-      return null;
-    }
+    const response = await fetch(url);
+    const data = await response.json();
+    return data;
   } catch (error) {
-    clearTimeout(timeoutId);
-    console.error("GET error:", error);
+    console.error("GET Error:", error);
     return null;
   }
 }
