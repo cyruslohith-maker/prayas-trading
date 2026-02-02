@@ -1,72 +1,88 @@
 // @ts-nocheck
-import { User, ChevronDown, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { RefreshCw } from 'lucide-react';
+import { getCurrentCashBalance, getStartingCapital } from '../lib/api';
 
-export function UserProfile({ name, cash, role, currentCashBalance, onRefreshBalance, isRefreshing }) {
-  const roleLabels = {
-    user: 'Trader',
-    broker: 'Broker',
-    admin: 'Admin'
+export function UserProfile({ userName, userRole }) {
+  const [currentBalance, setCurrentBalance] = useState<number | null>(null);
+  const [startingCapital, setStartingCapital] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadBalances();
+    
+    // Auto-refresh every 4 seconds
+    const interval = setInterval(loadBalances, 4000);
+    return () => clearInterval(interval);
+  }, [userName]);
+
+  const loadBalances = async () => {
+    try {
+      const [balance, capital] = await Promise.all([
+        getCurrentCashBalance(userName),
+        getStartingCapital()
+      ]);
+      setCurrentBalance(balance);
+      setStartingCapital(capital);
+    } catch (e) {
+      console.error('Error loading balances:', e);
+    }
   };
 
-  const showCashBalance = role === 'user' && currentCashBalance !== undefined;
+  const handleRefresh = async () => {
+    setLoading(true);
+    await loadBalances();
+    setLoading(false);
+  };
+
+  const formatCurrency = (value: number | null) => {
+    if (value === null) return '...';
+    return '₹' + value.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+  };
+
+  // Don't show balance for brokers/admins
+  const showBalance = userRole === 'user';
 
   return (
-    <div className="px-4 mb-6">
-      {/* User Info */}
-      <div className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-4 hover:border-zinc-700 transition-colors">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center">
-            <User size={24} className="text-white" />
+    <div className="p-4 border-b border-zinc-800">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <p className="text-white font-semibold text-lg">{userName}</p>
+          <p className="text-gray-500 text-xs uppercase tracking-wide">
+            {userRole === 'admin' ? 'Administrator' : userRole === 'broker' ? 'Broker' : 'Trader'}
+          </p>
+        </div>
+      </div>
+      
+      {showBalance && (
+        <div className="mt-3 space-y-2">
+          {/* Starting Capital */}
+          <div className="flex items-center justify-between">
+            <span className="text-gray-400 text-sm">Starting Capital</span>
+            <span className="text-gray-300 text-sm font-medium">
+              {formatCurrency(startingCapital)}
+            </span>
           </div>
-          <div className="flex-1 text-left">
+          
+          {/* Current Cash Balance */}
+          <div className="flex items-center justify-between">
+            <span className="text-gray-400 text-sm">Current Cash</span>
             <div className="flex items-center gap-2">
-              <h3 className="text-white font-semibold text-sm">{name}</h3>
-              <ChevronDown size={14} className="text-gray-500" />
-            </div>
-            <p className="text-gray-500 text-xs">{roleLabels[role] || 'Trader'}</p>
-          </div>
-        </div>
-
-        {/* Starting Capital */}
-        <div className="border-t border-zinc-800 pt-3">
-          <p className="text-gray-500 text-xs mb-1">Starting Capital</p>
-          <p className="text-white text-lg font-bold">₹{parseFloat(cash).toLocaleString('en-IN')}</p>
-        </div>
-
-        {/* Current Cash Balance - Only for traders */}
-        {showCashBalance && (
-          <div className="border-t border-zinc-800 pt-3 mt-3">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-gray-500 text-xs">Current Cash Balance</p>
+              <span className="text-white text-sm font-bold">
+                {formatCurrency(currentBalance)}
+              </span>
               <button
-                onClick={onRefreshBalance}
-                disabled={isRefreshing}
-                className="p-1 hover:bg-zinc-800 rounded transition-colors disabled:opacity-50"
+                onClick={handleRefresh}
+                disabled={loading}
+                className="p-1 hover:bg-zinc-800 rounded transition-colors"
                 title="Refresh balance"
               >
-                <RefreshCw 
-                  size={14} 
-                  className={`text-gray-400 hover:text-green-500 ${isRefreshing ? 'animate-spin' : ''}`} 
-                />
+                <RefreshCw size={12} className={`text-gray-500 ${loading ? 'animate-spin' : ''}`} />
               </button>
             </div>
-            <p className={`text-lg font-bold ${
-              currentCashBalance >= parseFloat(cash) ? 'text-green-500' : 'text-red-500'
-            }`}>
-              ₹{parseFloat(currentCashBalance).toLocaleString('en-IN')}
-            </p>
-            {currentCashBalance !== parseFloat(cash) && (
-              <p className={`text-xs mt-1 ${
-                currentCashBalance >= parseFloat(cash) ? 'text-green-500' : 'text-red-500'
-              }`}>
-                {currentCashBalance >= parseFloat(cash) ? '+' : ''}
-                ₹{(currentCashBalance - parseFloat(cash)).toLocaleString('en-IN')} 
-                ({((currentCashBalance - parseFloat(cash)) / parseFloat(cash) * 100).toFixed(2)}%)
-              </p>
-            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
