@@ -1,6 +1,6 @@
 // @ts-nocheck
 // UPDATE THIS URL AFTER DEPLOYING THE NEW CODE.GS
-export const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyRZccNGpkG1xSBIcMUurW6AD8t8u7i8UpbEPxuUwWzKpGEaUea6qU5veREoJmM_RuDxA/exec";
+export const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwowrmynkHDiQ0bsz4dfKkeRfJeLn9Qr7M7EzgyX_D7Pn1rufm4KEbNn-jTh4zL7sIa2Q/exec";
 
 // Request helper with proper error handling
 async function request(payload: any, timeout: number = 10000) {
