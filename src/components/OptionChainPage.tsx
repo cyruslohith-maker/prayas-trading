@@ -34,7 +34,7 @@ export function OptionChainPage({ onBack, userName, activeRound }) {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-4xl font-bold text-white mb-2">Option Chain</h1>
-          <p className="text-gray-400">INDEX A Options for Round {activeRound}</p>
+          <p className="text-gray-400">NOVUS INDEX Options for Round {activeRound}</p>
         </div>
         <button
           onClick={loadOptionChain}
