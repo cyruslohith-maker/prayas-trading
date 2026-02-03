@@ -1,68 +1,36 @@
 // @ts-nocheck
-import { 
-  TrendingUp, 
-  ArrowRightLeft, 
-  Briefcase,
-  Newspaper, 
-  BarChart3, 
-  Settings, 
-  ShieldCheck,
-  Gavel
-} from 'lucide-react';
+import { BarChart3, ArrowLeftRight, TrendingUp, Newspaper, Lightbulb, Briefcase } from 'lucide-react';
 
-interface NavigationProps {
-  currentPage: string;
-  onNavigate: (page: string) => void;
-  userRole: string;
-  newsLockState: string;
-  optionLockState: string;
-}
-
-export function Navigation({ currentPage, onNavigate, userRole, newsLockState, optionLockState }: NavigationProps) {
-  const isAdmin = userRole === 'admin';
-  const isBroker = userRole === 'broker';
-  const isTrader = userRole === 'user';
+export function Navigation({ activeItem, onNavigate, userRole, isCollapsed, hasCompletedAuction, optionLockState, newsLockState, shortLockState }) {
+  const isAdminOrBroker = userRole === 'admin' || userRole === 'broker';
+  const showOptionChain = optionLockState === 'open' || isAdminOrBroker;
+  const showNews = newsLockState === 'open' || isAdminOrBroker;
   
-  // Traders can't see News when locked (unless admin/broker)
-  const showNews = newsLockState === 'open' || isAdmin || isBroker;
-
-  const navItems = [
-    { id: 'market', label: 'Market', icon: TrendingUp, show: true },
-    { id: 'trade', label: 'Trade', icon: ArrowRightLeft, show: isTrader || isAdmin || isBroker },
-    { id: 'portfolio', label: 'Portfolio', icon: Briefcase, show: isTrader },
-    { id: 'options', label: 'Options', icon: BarChart3, show: isTrader || isAdmin || isBroker },
-    { id: 'news', label: 'News', icon: Newspaper, show: showNews },
-    { id: 'auction', label: 'Auction', icon: Gavel, show: true },
-    { id: 'broker', label: 'Broker Panel', icon: ShieldCheck, show: isBroker || isAdmin },
-    { id: 'admin', label: 'Admin Panel', icon: Settings, show: isAdmin },
-  ];
+  const items = [
+    { id: 'market', label: 'Market', icon: BarChart3, show: true },
+    { id: 'trade', label: 'Trade', icon: ArrowLeftRight, show: true },
+    { id: 'portfolio', label: 'Portfolio', icon: Briefcase, show: userRole === 'user' },
+    ...(showOptionChain ? [{ id: 'options', label: 'Option Chain', icon: TrendingUp, show: true }] : []),
+    ...(showNews ? [{ id: 'news', label: 'News', icon: Newspaper, show: true }] : []),
+    { id: 'intel', label: 'Intel', icon: Lightbulb, showDot: hasCompletedAuction, show: true }
+  ].filter(item => item.show);
 
   return (
-    <nav className="flex-1 p-4">
-      <ul className="space-y-1">
-        {navItems
-          .filter(item => item.show)
-          .map((item) => {
-            const Icon = item.icon;
-            const isActive = currentPage === item.id;
-            
-            return (
-              <li key={item.id}>
-                <button
-                  onClick={() => onNavigate(item.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                    isActive
-                      ? 'bg-green-600/20 text-green-500 border border-green-600/30'
-                      : 'text-gray-400 hover:text-white hover:bg-zinc-800'
-                  }`}
-                >
-                  <Icon size={20} />
-                  <span className="font-medium">{item.label}</span>
-                </button>
-              </li>
-            );
-          })}
-      </ul>
+    <nav className={`space-y-2 ${isCollapsed ? 'px-2' : 'px-4'}`}>
+      {items.map((item) => {
+        const Icon = item.icon;
+        const isActive = activeItem === item.id;
+        return (
+          <button key={item.id} onClick={() => onNavigate(item.id)} title={isCollapsed ? item.label : ''}
+            className={`w-full flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'} px-4 py-3 rounded-lg transition-all relative ${
+              isActive ? 'bg-green-600 text-white' : 'text-gray-400 hover:bg-zinc-900 hover:text-white'
+            }`}>
+            <Icon size={20} />
+            {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+            {item.showDot && <div className="absolute top-2 right-2 w-2 h-2 bg-green-500 rounded-full animate-pulse" />}
+          </button>
+        );
+      })}
     </nav>
   );
 }
