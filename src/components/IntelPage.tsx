@@ -28,12 +28,13 @@ export function IntelPage({ onBack, userName, userRole }) {
   // --- POLL DATA ---
   useEffect(() => {
     const loadAuctions = async () => {
+      // Only show loading spinner on initial load
       if (auctions.length === 0) setLoading(true);
       try {
         const data = await getAuctions();
         setAuctions(data || []);
       } catch (e) {
-        console.error(e);
+        console.error("Failed to load auctions", e);
       } finally {
         setLoading(false);
       }
@@ -49,7 +50,7 @@ export function IntelPage({ onBack, userName, userRole }) {
       try {
         const data = await getAuctionBids(selectedAuction.id);
         setBids(data || []);
-      } catch (e) { console.error(e); }
+      } catch (e) { console.error("Failed to load bids", e); }
     };
     loadBids();
     const interval = setInterval(loadBids, 3000);
@@ -60,12 +61,14 @@ export function IntelPage({ onBack, userName, userRole }) {
 
   const handleCreateAuction = async () => {
     if (!newAuctionStock || !newAuctionSnippet || !newAuctionBid) {
-      alert("Fill all fields");
+      alert("Please fill all fields");
       return;
     }
     setCreating(true);
     try {
+      // Create auction (defaulting to Round 1 since round isn't passed here, can be enhanced)
       const res = await createAuction(1, newAuctionStock.toUpperCase(), newAuctionSnippet, parseInt(newAuctionDuration), parseFloat(newAuctionBid));
+      
       if (res.success) {
         alert("Auction Live!");
         setShowCreateModal(false);
@@ -76,10 +79,11 @@ export function IntelPage({ onBack, userName, userRole }) {
         const data = await getAuctions();
         setAuctions(data || []);
       } else {
-        alert("Failed to create.");
+        alert("Failed to create auction: " + (res.error || "Unknown error"));
       }
     } catch (e) {
-      alert("Error creating auction");
+      alert("Error creating auction. Check console.");
+      console.error(e);
     } finally {
       setCreating(false);
     }
@@ -87,6 +91,7 @@ export function IntelPage({ onBack, userName, userRole }) {
 
   const handlePlaceBid = async () => {
     const actualBidder = isPrivileged && proxyTeam ? proxyTeam : userName;
+    
     if (!bidAmount || !selectedAuction) return;
     
     if (isPrivileged && !proxyTeam) {
@@ -95,8 +100,9 @@ export function IntelPage({ onBack, userName, userRole }) {
     }
 
     const highestBid = bids.length > 0 ? Math.max(...bids.map(b => b.amount)) : selectedAuction.startingBid;
+    
     if (parseFloat(bidAmount) <= highestBid) {
-      alert(`Bid must be > ₹${highestBid}`);
+      alert(`Bid must be higher than current highest: ₹${highestBid}`);
       return;
     }
 
@@ -106,12 +112,21 @@ export function IntelPage({ onBack, userName, userRole }) {
       if (res.success) {
         setBidAmount('');
         if (isPrivileged) setProxyTeam('');
-        setBids(prev => [{ bidder: actualBidder, amount: parseFloat(bidAmount), time: new Date().toISOString() }, ...prev]);
+        // Optimistic update
+        setBids(prev => [{ 
+          bidder: actualBidder, 
+          amount: parseFloat(bidAmount), 
+          time: new Date().toISOString() 
+        }, ...prev]);
       } else {
-        alert("Failed: " + res.error);
+        alert("Failed to place bid: " + (res.error || "Unknown error"));
       }
-    } catch (e) { alert("Error placing bid"); } 
-    finally { setPlacingBid(false); }
+    } catch (e) { 
+      alert("Error placing bid"); 
+      console.error(e);
+    } finally { 
+      setPlacingBid(false); 
+    }
   };
 
   return (
@@ -189,7 +204,11 @@ export function IntelPage({ onBack, userName, userRole }) {
                     <p className="text-2xl font-bold text-white">₹{auction.startingBid}</p>
                   </div>
                 </div>
-                <p className="text-gray-400 text-sm mb-6 leading-relaxed max-w-xl">{auction.snippet}</p>
+                
+                <p className="text-gray-400 text-sm mb-6 leading-relaxed max-w-xl">
+                  {auction.snippet}
+                </p>
+
                 <div className="flex items-center gap-2 text-green-500 font-bold text-sm uppercase tracking-wider">
                   <Timer size={16} />
                   <span>Ends in {auction.duration} mins</span>
@@ -215,7 +234,10 @@ export function IntelPage({ onBack, userName, userRole }) {
 
                <div className="flex-1 overflow-y-auto space-y-3 mb-6 pr-2 custom-scrollbar">
                  {bids.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-gray-600"><p>No bids yet.</p></div>
+                    <div className="flex flex-col items-center justify-center h-full text-gray-600">
+                      <p>No bids yet.</p>
+                      <p className="text-xs">Be the first to bid!</p>
+                    </div>
                  ) : (
                    bids.map((bid, idx) => (
                      <div key={idx} className="flex justify-between items-center bg-zinc-950 p-4 rounded-xl border border-zinc-800 animate-in slide-in-from-bottom-2">
@@ -242,12 +264,28 @@ export function IntelPage({ onBack, userName, userRole }) {
                   {isPrivileged && (
                     <div className="relative group">
                       <UserCog className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-                      <input type="text" placeholder="Proxy Team Name" value={proxyTeam} onChange={(e) => setProxyTeam(e.target.value)} className="w-full bg-zinc-950 border border-zinc-700 rounded-xl pl-12 pr-4 py-3 text-yellow-500 font-bold outline-none focus:border-yellow-500 transition-all text-sm" />
+                      <input 
+                        type="text" 
+                        placeholder="Proxy Team Name" 
+                        value={proxyTeam} 
+                        onChange={(e) => setProxyTeam(e.target.value)} 
+                        className="w-full bg-zinc-950 border border-zinc-700 rounded-xl pl-12 pr-4 py-3 text-yellow-500 font-bold outline-none focus:border-yellow-500 transition-all text-sm" 
+                      />
                     </div>
                   )}
                   <div className="flex gap-3">
-                    <input type="number" placeholder="Bid Amount" value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-green-500 transition-all" />
-                    <button onClick={handlePlaceBid} disabled={placingBid} className={`px-6 rounded-xl font-black uppercase italic tracking-tighter transition-all disabled:opacity-50 ${isPrivileged ? 'bg-yellow-500 text-black' : 'bg-green-500 text-black'}`}>
+                    <input 
+                      type="number" 
+                      placeholder="Bid Amount" 
+                      value={bidAmount} 
+                      onChange={(e) => setBidAmount(e.target.value)} 
+                      className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-green-500 transition-all" 
+                    />
+                    <button 
+                      onClick={handlePlaceBid} 
+                      disabled={placingBid} 
+                      className={`px-6 rounded-xl font-black uppercase italic tracking-tighter transition-all disabled:opacity-50 ${isPrivileged ? 'bg-yellow-500 text-black' : 'bg-green-500 text-black'}`}
+                    >
                       {placingBid ? <Loader2 className="animate-spin" /> : (isPrivileged ? 'PROXY' : 'BID')}
                     </button>
                   </div>
@@ -271,9 +309,59 @@ export function IntelPage({ onBack, userName, userRole }) {
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1 mb-1 block">Stock Ticker</label>
-                <input value={newAuctionStock} onChange={e => setNewAuctionStock(e.target.value)} className="w-full bg-black border border-zinc-800 rounded-xl p-4 text-white font-bold focus:border-green-500 outline-none uppercase" placeholder="e.g. HDFCBANK" />
+                <input 
+                  value={newAuctionStock} 
+                  onChange={e => setNewAuctionStock(e.target.value)} 
+                  className="w-full bg-black border border-zinc-800 rounded-xl p-4 text-white font-bold focus:border-green-500 outline-none uppercase" 
+                  placeholder="e.g. HDFCBANK" 
+                />
               </div>
               
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1 mb-1 block">Intel Snippet</label>
-                <textarea value={newAuctionSnippet} onChange={e => setNewAuctionSnippet(e.target.value)} rows={3} className="w-full bg-black border border-zinc-800
+                <textarea 
+                  value={newAuctionSnippet} 
+                  onChange={e => setNewAuctionSnippet(e.target.value)} 
+                  rows={3} 
+                  className="w-full bg-black border border-zinc-800 rounded-xl p-4 text-white focus:border-green-500 outline-none resize-none" 
+                  placeholder="Insider info teaser..." 
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1 mb-1 block">Start Bid (₹)</label>
+                  <input 
+                    type="number" 
+                    value={newAuctionBid} 
+                    onChange={e => setNewAuctionBid(e.target.value)} 
+                    className="w-full bg-black border border-zinc-800 rounded-xl p-4 text-white font-bold focus:border-green-500 outline-none" 
+                    placeholder="5000" 
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-widest ml-1 mb-1 block">Duration (Min)</label>
+                  <input 
+                    type="number" 
+                    value={newAuctionDuration} 
+                    onChange={e => setNewAuctionDuration(e.target.value)} 
+                    className="w-full bg-black border border-zinc-800 rounded-xl p-4 text-white font-bold focus:border-green-500 outline-none" 
+                    placeholder="5" 
+                  />
+                </div>
+              </div>
+
+              <button 
+                onClick={handleCreateAuction} 
+                disabled={creating} 
+                className="w-full bg-green-500 hover:bg-green-400 text-black py-4 rounded-xl font-black uppercase italic tracking-tighter text-lg mt-4 disabled:opacity-50"
+              >
+                {creating ? <Loader2 className="animate-spin mx-auto" /> : 'GO LIVE'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
