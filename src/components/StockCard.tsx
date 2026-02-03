@@ -30,6 +30,7 @@ export function StockCard({ stock, onClick }) {
     'COALINDIA': 'Coal India',
     'VA TECH WABAG': 'Water Treatment',
     'VATECH': 'VA Tech Wabag',
+    'GOLD' : 'COMMODITY', 
     'ION EXCHANGE': 'Water Treatment',
     'ITC HOTELS': 'Hospitality',
     'ITCHOTELS': 'ITC Hotels',
@@ -49,8 +50,7 @@ export function StockCard({ stock, onClick }) {
     'ICICIBANK': 'ICICI Bank',
     'WIPRO': 'Wipro',
     'ITC': 'ITC Ltd',
-    'GOLD': 'Gold',
-    'COPPER': 'Copper',
+    'COPPER': 'COMMODITY',
     'NOVUS INDEX': 'Market Index'
   };
   
