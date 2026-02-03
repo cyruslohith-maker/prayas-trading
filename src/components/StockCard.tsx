@@ -1,58 +1,35 @@
 // @ts-nocheck
 import { TrendingUp, TrendingDown } from 'lucide-react';
 
-export function StockCard({ ticker, price, change, previousPrice }) {
-  // Calculate percentage change dynamically if previousPrice is provided
-  let calculatedChange = change;
-  if (previousPrice !== undefined && previousPrice > 0) {
-    calculatedChange = (price - previousPrice) / previousPrice;
-  }
+export function StockCard({ ticker, price, change, onClick }) {
+  const isPositive = change >= 0;
+  const changePercent = (change * 100).toFixed(2);
   
-  const isPositive = calculatedChange >= 0;
-  const changePercent = (calculatedChange * 100).toFixed(2);
-  
-  // Get subtitle (company name) from ticker
   const subtitles = {
-    'SBI': 'State Bank Of India',
-    'SBIN': 'State Bank Of India',
-    'STATE BANK OF INDIA': 'Banking',
+    'SUNPHARMA': 'Sun Pharma',
+    'SUN PHARMA': 'Sun Pharma',
     'HDFCBANK': 'HDFC Bank',
-    'HDFC BANK': 'Banking',
-    'VEDANTA': 'Mining',
-    'COAL INDIA': 'Mining',
-    'COALINDIA': 'Coal India',
-    'VA TECH WABAG': 'Water Treatment',
-    'VATECH': 'VA Tech Wabag',
-    'ION EXCHANGE': 'Water Treatment',
-    'ITC HOTELS': 'Hospitality',
-    'ITCHOTELS': 'ITC Hotels',
-    'HILTON HOTELS': 'Hospitality',
-    'HILTON': 'Hilton Hotels',
-    'BHARAT FORGE': 'Auto Components',
-    'BHARATFORGE': 'Bharat Forge',
-    'SONA PRECISIONS': 'Auto Components',
-    'SONAPRECISIONS': 'Sona Precisions',
-    'MARUTI SUZUKI': 'Automobile',
-    'MARUTI': 'Maruti Suzuki',
-    'MAHINDRA & MAHINDRA': 'Automobile',
-    'M&M': 'Mahindra & Mahindra',
+    'HDFC BANK': 'HDFC Bank',
     'RELIANCE': 'Reliance Ind',
     'TCS': 'TCS',
     'INFY': 'Infosys',
     'ICICIBANK': 'ICICI Bank',
+    'ICICI BANK': 'ICICI Bank',
     'WIPRO': 'Wipro',
     'ITC': 'ITC Ltd',
     'GOLD': 'Gold',
     'COPPER': 'Copper',
-    'NOVUS INDEX': 'Market Index'
+    'STATE BANK OF INDIA': 'SBI',
+    'VA TECH WABAG': 'VA Tech'
   };
   
-const safeTicker = (ticker || '').toString(); // Forces it to be a string
-const subtitle = subtitles[safeTicker.toUpperCase()] || safeTicker;
+  const subtitle = subtitles[ticker] || ticker;
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 transition-colors">
-      {/* Header */}
+    <div 
+      onClick={onClick}
+      className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 hover:bg-zinc-800/50 transition-all cursor-pointer"
+    >
       <div className="flex items-start justify-between mb-4">
         <div>
           <h3 className="text-white text-lg font-bold mb-1">{ticker}</h3>
@@ -67,34 +44,17 @@ const subtitle = subtitles[safeTicker.toUpperCase()] || safeTicker;
         </div>
       </div>
 
-      {/* Price */}
       <div className="mb-3">
         <div className="text-white text-2xl font-bold">
-          ₹{Number(price).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+          ₹{Number(price || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
         </div>
-        {/* Show previous price if available */}
-        {previousPrice !== undefined && previousPrice > 0 && previousPrice !== price && (
-          <div className="text-gray-500 text-xs mt-1">
-            Prev: ₹{Number(previousPrice).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-          </div>
-        )}
       </div>
 
-      {/* Change */}
       <div className={`flex items-center gap-1 text-sm font-semibold ${
         isPositive ? 'text-green-500' : 'text-red-500'
       }`}>
-        {isPositive ? (
-          <TrendingUp size={14} />
-        ) : (
-          <TrendingDown size={14} />
-        )}
+        {isPositive ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
         <span>{isPositive ? '+' : ''}{changePercent}%</span>
-        {previousPrice !== undefined && previousPrice > 0 && (
-          <span className="text-gray-500 text-xs ml-2">
-            ({isPositive ? '+' : ''}₹{(price - previousPrice).toFixed(2)})
-          </span>
-        )}
       </div>
     </div>
   );
