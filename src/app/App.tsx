@@ -140,7 +140,7 @@ export default function App() {
       } catch (e) { console.error(e); }
     };
     checkLocks();
-    const interval = setInterval(checkLocks, 5000);
+    const interval = setInterval(checkLocks, 4000);
     return () => clearInterval(interval);
   }, [isLoggedIn]);
 
@@ -156,7 +156,7 @@ export default function App() {
       } catch (e) { console.error(e); }
     };
     loadData();
-    const interval = setInterval(loadData, 4000);
+    const interval = setInterval(loadData, 3000);
     return () => clearInterval(interval);
   }, [isLoggedIn]);
 
