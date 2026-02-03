@@ -1,9 +1,25 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-body {
-  margin: 0;
-  padding: 0;
-  background-color: #000;
+@theme {
+  --color-brand-green: #00C805;
+  --color-brand-red: #FF5000;
+  --color-brand-dark: #121212;
+  --color-terminal-bg: #1E1E1E;
+  --color-terminal-border: #2A2A2A;
+}
+
+@layer base {
+  body {
+    @apply bg-brand-dark text-white font-sans antialiased selection:bg-brand-green/30;
+  }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee {
+  display: inline-block;
+  animation: marquee 30s linear infinite;
 }
