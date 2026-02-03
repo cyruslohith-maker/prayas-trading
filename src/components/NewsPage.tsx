@@ -10,7 +10,7 @@ export function NewsPage({ onBack }) {
 
   useEffect(() => {
     loadNews();
-    const interval = setInterval(loadNews, 10000);
+    const interval = setInterval(loadNews, 7000);
     return () => clearInterval(interval);
   }, []);
 
