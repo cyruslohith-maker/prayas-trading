@@ -20,7 +20,7 @@ export function BrokerPanel({ onBack, userName, userRole }) {
 
   useEffect(() => {
     loadAllTrades();
-    const interval = setInterval(loadAllTrades, 4000);
+    const interval = setInterval(loadAllTrades, 3000);
     return () => clearInterval(interval);
   }, [userName]);
 
