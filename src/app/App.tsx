@@ -3,69 +3,70 @@ import { UserProfile } from "../components/UserProfile";
 import { Navigation } from "../components/Navigation";
 import { StockCard } from "../components/StockCard";
 import { TradePage } from "../components/TradePage";
-import { PortfolioPage } from "../components/PortfolioPage";
 import { LoginPage } from "../components/LoginPage";
 import { NewsPage } from "../components/NewsPage";
 import { OptionChainPage } from "../components/OptionChainPage";
+import { IntelPage } from "../components/IntelPage";
 import { BrokerPanel } from "../components/BrokerPanel";
 import { AdminPanel } from "../components/AdminPanel";
+import { BlockDealsPanel } from "../components/BlockDealsPanel";
+import { PortfolioPage } from "../components/PortfolioPage";
 import { Activity, ChevronLeft, ChevronRight, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
 import { 
+  getUserBalance, 
   getActiveRound, 
   fetchMarketPrices, 
+  getAuctions, 
   getOptionLockState,
   getNewsLockState,
-  getShortLockState
+  getShortLockState,
+  getCurrentCashBalance,
+  getStartingCapital
 } from "../lib/api";
 
 export default function App() {
-  // Auth state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('user');
-  
-  // App state
+  const [userCapital, setUserCapital] = useState(0);
+  const [startingCapital, setStartingCapital] = useState(10000000);
   const [marketStocks, setMarketStocks] = useState([]);
   const [currentPage, setCurrentPage] = useState("market");
   const [activeRound, setActiveRound] = useState(1);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  
-  // Lock states
+  const [hasCompletedAuction, setHasCompletedAuction] = useState(false);
   const [optionLockState, setOptionLockState] = useState('open');
   const [newsLockState, setNewsLockState] = useState('open');
   const [shortLockState, setShortLockState] = useState('open');
 
-  // Session persistence - restore on mount
+  // Session persistence
   useEffect(() => {
-    const savedLogin = sessionStorage.getItem('mockstock_isLoggedIn');
-    const savedUser = sessionStorage.getItem('mockstock_userName');
-    const savedRole = sessionStorage.getItem('mockstock_userRole');
-    const savedLoginTime = sessionStorage.getItem('mockstock_loginTime');
-    const savedPage = sessionStorage.getItem('mockstock_currentPage');
+    const savedLogin = localStorage.getItem('mockstock_isLoggedIn');
+    const savedUser = localStorage.getItem('mockstock_userName');
+    const savedRole = localStorage.getItem('mockstock_userRole');
+    const savedTime = localStorage.getItem('mockstock_loginTime');
     
-    if (savedLogin === 'true' && savedUser && savedLoginTime) {
-      const elapsed = Date.now() - parseInt(savedLoginTime);
+    if (savedLogin === 'true' && savedUser && savedTime) {
+      const elapsed = Date.now() - parseInt(savedTime);
       const FORTY_MINS = 40 * 60 * 1000;
       
       if (elapsed < FORTY_MINS) {
         setIsLoggedIn(true);
         setUserName(savedUser);
         setUserRole(savedRole || 'user');
-        if (savedPage) setCurrentPage(savedPage);
       } else {
-        // Session expired
         handleLogout();
       }
     }
   }, []);
 
-  // Session timeout checker
+  // Session timeout check
   useEffect(() => {
     if (!isLoggedIn) return;
     
     const interval = setInterval(() => {
-      const loginTime = parseInt(sessionStorage.getItem('mockstock_loginTime') || '0');
+      const loginTime = parseInt(localStorage.getItem('mockstock_loginTime') || '0');
       const elapsed = Date.now() - loginTime;
       const FORTY_MINS = 40 * 60 * 1000;
       
@@ -73,17 +74,10 @@ export default function App() {
         handleLogout();
         alert('Session expired. Please login again.');
       }
-    }, 60000); // Check every minute
+    }, 60000);
     
     return () => clearInterval(interval);
   }, [isLoggedIn]);
-
-  // Save current page to session
-  useEffect(() => {
-    if (isLoggedIn) {
-      sessionStorage.setItem('mockstock_currentPage', currentPage);
-    }
-  }, [currentPage, isLoggedIn]);
 
   // Poll lock states
   useEffect(() => {
@@ -91,21 +85,21 @@ export default function App() {
     
     const checkLocks = async () => {
       try {
-        const [optLock, nLock, sLock] = await Promise.all([
+        const [optLock, newsLock, shortLock] = await Promise.all([
           getOptionLockState(),
           getNewsLockState(),
           getShortLockState()
         ]);
         setOptionLockState(optLock);
-        setNewsLockState(nLock);
-        setShortLockState(sLock);
+        setNewsLockState(newsLock);
+        setShortLockState(shortLock);
       } catch (e) {
         console.error("Lock check error:", e);
       }
     };
     
     checkLocks();
-    const interval = setInterval(checkLocks, 5000);
+    const interval = setInterval(checkLocks, 3000);
     return () => clearInterval(interval);
   }, [isLoggedIn]);
 
@@ -128,22 +122,45 @@ export default function App() {
     };
     
     loadData();
-    const interval = setInterval(loadData, 4000);
+    const interval = setInterval(loadData, 3000);
     return () => clearInterval(interval);
   }, [isLoggedIn]);
 
-  const handleLogin = (name: string, role: string) => {
+  // Poll user balance
+  useEffect(() => {
+    if (!isLoggedIn || userRole !== 'user') return;
+    
+    const loadBalance = async () => {
+      try {
+        const [balance, starting] = await Promise.all([
+          getCurrentCashBalance(userName),
+          getStartingCapital()
+        ]);
+        setUserCapital(balance);
+        setStartingCapital(starting);
+      } catch (e) {
+        console.error("Balance load error:", e);
+      }
+    };
+    
+    loadBalance();
+    const interval = setInterval(loadBalance, 4000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, userName, userRole]);
+
+  const handleLogin = (name, role) => {
     setIsLoggedIn(true);
-    setUserName(name);
+    setUserName(name.toLowerCase().trim());
     setUserRole(role);
     setCurrentPage('market');
     
-    // Save to session
-    sessionStorage.setItem('mockstock_isLoggedIn', 'true');
-    sessionStorage.setItem('mockstock_userName', name);
-    sessionStorage.setItem('mockstock_userRole', role);
-    sessionStorage.setItem('mockstock_loginTime', Date.now().toString());
-    sessionStorage.setItem('mockstock_currentPage', 'market');
+    localStorage.setItem('mockstock_isLoggedIn', 'true');
+    localStorage.setItem('mockstock_userName', name.toLowerCase().trim());
+    localStorage.setItem('mockstock_userRole', role);
+    localStorage.setItem('mockstock_loginTime', Date.now().toString());
+    
+    if (role === 'admin') setCurrentPage('admin');
+    else if (role === 'broker') setCurrentPage('broker');
   };
 
   const handleLogout = () => {
@@ -152,158 +169,208 @@ export default function App() {
     setUserRole('user');
     setCurrentPage('market');
     
-    // Clear session
-    sessionStorage.removeItem('mockstock_isLoggedIn');
-    sessionStorage.removeItem('mockstock_userName');
-    sessionStorage.removeItem('mockstock_userRole');
-    sessionStorage.removeItem('mockstock_loginTime');
-    sessionStorage.removeItem('mockstock_currentPage');
+    localStorage.removeItem('mockstock_isLoggedIn');
+    localStorage.removeItem('mockstock_userName');
+    localStorage.removeItem('mockstock_userRole');
+    localStorage.removeItem('mockstock_loginTime');
   };
 
-  // Show login page if not logged in
   if (!isLoggedIn) {
     return <LoginPage onLogin={handleLogin} />;
   }
 
-  // Render current page content
-  const renderContent = () => {
-    switch (currentPage) {
-      case 'trade':
-        return (
-          <TradePage 
-            onBack={() => setCurrentPage('market')} 
-            userName={userName}
-            activeRound={activeRound}
-            marketStocks={marketStocks}
-            optionLockState={optionLockState}
-            shortLockState={shortLockState}
-            userRole={userRole}
-          />
-        );
-      case 'portfolio':
-        return (
-          <PortfolioPage
-            onBack={() => setCurrentPage('market')}
-            userName={userName}
-          />
-        );
-      case 'options':
-        return (
-          <OptionChainPage 
-            onBack={() => setCurrentPage('market')} 
-            userName={userName}
-            activeRound={activeRound}
-          />
-        );
-      case 'news':
-        return (
-          <NewsPage onBack={() => setCurrentPage('market')} />
-        );
-      case 'broker':
-        return (
-          <BrokerPanel 
-            onBack={() => setCurrentPage('market')} 
-            userName={userName}
-            userRole={userRole}
-          />
-        );
-      case 'admin':
-        return (
-          <AdminPanel onBack={() => setCurrentPage('market')} />
-        );
-      case 'market':
-      default:
-        return (
-          <div>
-            {/* Header */}
-            <div className="flex items-center justify-between mb-8">
-              <div>
-                <h1 className="text-4xl font-bold text-white mb-2">Market Overview</h1>
-                <p className="text-gray-400">
-                  Round {activeRound} • {marketStocks.length} stocks available
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2">
-                  <span className="text-gray-400 text-sm">Round</span>
-                  <span className="text-white font-bold text-xl ml-2">{activeRound}</span>
-                </div>
-              </div>
+  return (
+    <div className="min-h-screen bg-black flex">
+      
+      {/* Sidebar */}
+      <aside className={`${isSidebarCollapsed ? 'w-20' : 'w-80'} bg-black border-r border-zinc-800 flex flex-col h-screen sticky top-0 transition-all duration-300`}>
+        
+        {/* Logo */}
+        <div className="p-6 border-b border-zinc-800">
+          <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
+            <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Activity size={24} className="text-white" />
             </div>
-
-            {/* Stock Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {marketStocks
-                .filter(s => s.ticker && s.price > 0)
-                .map((stock) => (
-                  <StockCard 
-                    key={stock.ticker} 
-                    stock={stock} 
-                    onClick={() => setCurrentPage('trade')}
-                  />
-                ))
-              }
-            </div>
-
-            {marketStocks.length === 0 && (
-              <div className="text-center py-12 text-gray-500">
-                Loading market data...
-              </div>
+            {!isSidebarCollapsed && (
+              <h1 className="text-xl font-bold text-white">
+                Prayas <span className="text-green-600">CUCA</span>
+              </h1>
             )}
           </div>
-        );
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-black text-white flex">
-      {/* Sidebar */}
-      <aside className={`${isSidebarCollapsed ? 'w-20' : 'w-64'} bg-zinc-950 border-r border-zinc-800 flex flex-col transition-all duration-300`}>
-        {/* Logo */}
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-          <div className={`flex items-center gap-2 ${isSidebarCollapsed ? 'justify-center w-full' : ''}`}>
-            <Activity className="text-green-500" size={24} />
-            {!isSidebarCollapsed && <span className="font-bold text-lg">MockStock</span>}
-          </div>
         </div>
-        
+
         {/* User Profile */}
         {!isSidebarCollapsed && (
-          <UserProfile userName={userName} userRole={userRole} />
+          <UserProfile 
+            name={userName} 
+            cash={userCapital} 
+            startingCapital={startingCapital}
+            role={userRole} 
+          />
         )}
         
         {/* Navigation */}
-        <Navigation 
-          currentPage={currentPage} 
-          onNavigate={setCurrentPage}
-          userRole={userRole}
-          newsLockState={newsLockState}
-          optionLockState={optionLockState}
-        />
-        
-        {/* Sidebar Toggle & Logout */}
-        <div className="p-4 border-t border-zinc-800 space-y-2">
-          <button
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            className="w-full flex items-center justify-center gap-2 py-2 text-gray-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
-          >
-            {isSidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-            {!isSidebarCollapsed && <span>Collapse</span>}
-          </button>
+        <div className="flex-1 overflow-y-auto py-4">
+          <Navigation 
+            activeItem={currentPage} 
+            onNavigate={setCurrentPage} 
+            userRole={userRole}
+            isCollapsed={isSidebarCollapsed}
+            hasCompletedAuction={hasCompletedAuction}
+            optionLockState={optionLockState}
+            newsLockState={newsLockState}
+            shortLockState={shortLockState}
+          />
+          
+          {/* Collapse Button */}
+          <div className={`${isSidebarCollapsed ? 'px-2' : 'px-4'} mt-4`}>
+            <button
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="w-full flex items-center justify-center gap-2 py-2 text-gray-400 hover:text-white hover:bg-zinc-900 rounded-lg transition-colors"
+            >
+              {isSidebarCollapsed ? <ChevronRight size={20} /> : (
+                <>
+                  <ChevronLeft size={20} />
+                  <span className="text-sm">Collapse</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom Section */}
+        <div className="border-t border-zinc-800">
+          {(userRole === 'broker' || userRole === 'admin') && (
+            <div className={`${isSidebarCollapsed ? 'p-2' : 'p-4'}`}>
+              <button
+                onClick={() => setCurrentPage(userRole === 'admin' ? 'admin' : 'broker')}
+                className={`w-full ${isSidebarCollapsed ? 'p-3' : 'px-4 py-3'} bg-zinc-900 hover:bg-zinc-800 text-white rounded-lg font-medium transition-colors flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-2'}`}
+              >
+                {isSidebarCollapsed ? (userRole === 'admin' ? 'A' : 'B') : (userRole === 'admin' ? 'Admin Panel' : 'Broker Panel')}
+              </button>
+            </div>
+          )}
           
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 py-2 text-red-400 hover:text-red-300 hover:bg-red-600/10 rounded-lg transition-colors"
+            className={`w-full ${isSidebarCollapsed ? 'p-4' : 'px-4 py-4'} flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} text-gray-400 hover:text-white hover:bg-zinc-900 transition-colors`}
           >
             <LogOut size={20} />
-            {!isSidebarCollapsed && <span>Logout</span>}
+            {!isSidebarCollapsed && <span className="text-sm font-medium">Logout</span>}
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 p-8 overflow-auto">
-        {renderContent()}
+      <main className="flex-1 bg-black min-h-screen overflow-y-auto">
+        
+        {/* Top Bar */}
+        <div className="sticky top-0 z-10 bg-black border-b border-zinc-800 px-8 py-4 flex items-center justify-end">
+          <div className="flex items-center gap-3">
+            <span className="text-gray-400 text-sm">Active Round</span>
+            <div className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-lg">
+              {activeRound}
+            </div>
+          </div>
+        </div>
+
+        {/* Page Content */}
+        <div className="p-8">
+          
+          {/* Market Watch */}
+          {currentPage === "market" && (
+            <div className="max-w-7xl mx-auto">
+              <div className="mb-8">
+                <h1 className="text-4xl font-bold text-white mb-2">Market Watch</h1>
+                <p className="text-gray-400">Live market prices • Click any stock to trade</p>
+              </div>
+
+              {/* Stocks Section */}
+              <div className="mb-12">
+                <h2 className="text-xl font-bold text-white mb-4">Stocks</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {marketStocks.length > 0 ? (
+                    marketStocks
+                      .filter(s => s.ticker && !s.ticker.includes('GOLD') && !s.ticker.includes('COPPER'))
+                      .map((s, i) => (
+                        <StockCard 
+                          key={i} 
+                          ticker={s.ticker} 
+                          price={s.price} 
+                          change={s.change}
+                          onClick={() => setCurrentPage('trade')}
+                        />
+                      ))
+                  ) : (
+                    <div className="col-span-full py-16 text-center text-gray-500">
+                      Loading market data...
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Commodities Section */}
+              {marketStocks.some(s => s.ticker && (s.ticker.includes('GOLD') || s.ticker.includes('COPPER'))) && (
+                <div>
+                  <h2 className="text-xl font-bold text-white mb-4">Commodities</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {marketStocks
+                      .filter(s => s.ticker && (s.ticker.includes('GOLD') || s.ticker.includes('COPPER')))
+                      .map((s, i) => (
+                        <StockCard 
+                          key={i} 
+                          ticker={s.ticker} 
+                          price={s.price} 
+                          change={s.change}
+                          onClick={() => setCurrentPage('trade')}
+                        />
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {currentPage === "trade" && (
+            <TradePage 
+              onBack={() => setCurrentPage('market')} 
+              userName={userName} 
+              activeRound={activeRound}
+              marketStocks={marketStocks}
+              optionLockState={optionLockState}
+              shortLockState={shortLockState}
+              userRole={userRole}
+            />
+          )}
+          
+          {currentPage === "portfolio" && (
+            <PortfolioPage onBack={() => setCurrentPage('market')} userName={userName} />
+          )}
+          
+          {currentPage === "options" && (
+            <OptionChainPage onBack={() => setCurrentPage('market')} activeRound={activeRound} />
+          )}
+          
+          {currentPage === "news" && (
+            <NewsPage onBack={() => setCurrentPage('market')} />
+          )}
+          
+          {currentPage === "intel" && (
+            <IntelPage onBack={() => setCurrentPage('market')} userName={userName} userRole={userRole} marketStocks={marketStocks} />
+          )}
+          
+          {currentPage === "broker" && (
+            <BrokerPanel onBack={() => setCurrentPage('market')} userName={userName} userRole={userRole} />
+          )}
+          
+          {currentPage === "blockdeals" && (
+            <BlockDealsPanel onBack={() => setCurrentPage('market')} />
+          )}
+          
+          {currentPage === "admin" && (
+            <AdminPanel onBack={() => setCurrentPage('market')} />
+          )}
+        </div>
       </main>
     </div>
   );
