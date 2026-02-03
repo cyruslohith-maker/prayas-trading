@@ -6,7 +6,7 @@ export const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwJ4_vwOwCWn9
 // HELPERS
 // ============================================================================
 
-async function request(payload: any, timeout: number = 16000) {
+async function request(payload: any, timeout: number = 5000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
   
